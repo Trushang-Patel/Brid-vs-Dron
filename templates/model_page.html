@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Bird vs Drone Classifier</title>
+    <style>
+        /* General Styling */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding-top: 60px;
+        }
+
+        .container {
+            background: white;
+            width: 90%;
+            max-width: 500px;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 26px;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        /* Custom File Input */
+        .file-input {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            padding: 10px 15px;
+            font-size: 16px;
+            font-weight: bold;
+            background: #007bff;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .file-label:hover {
+            background: #0056b3;
+        }
+
+        /* Upload & Analyze Button */
+        button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            font-size: 18px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #218838;
+        }
+
+        /* Prediction Box */
+        .prediction {
+            font-size: 22px;
+            font-weight: bold;
+            margin-top: 15px;
+            padding: 10px;
+            background: #ffeeba;
+            color: #856404;
+            border-radius: 5px;
+            display: inline-block;
+        }
+
+        /* Error message */
+        .error {
+            color: #721c24;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        /* Navbar */
+        .navbar {
+            background-color: #333;
+            color: white;
+            padding: 10px 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            margin: 0 15px;
+        }
+        
+        .navbar a:hover {
+            text-decoration: underline;
+        }
+
+        .navbar-right {
+            margin-right: 15px;
+        }
+
+        .logout-btn {
+            background: transparent;
+            border: 1px solid white;
+            width: auto;
+            padding: 5px 10px;
+            margin: 0;
+            font-size: 14px;
+        }
+    </style>
+    
+    <script>
+        // Helper function for AJAX requests with CSRF token
+        async function postData(url, formData) {
+            const csrf_token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrf_token
+                },
+                body: formData
+            });
+            return response.json();
+        }
+    </script>
+</head>
+<body>
+    <div class="navbar">
+        <div>
+            <a href="/">Home</a>
+            <a href="/model-page">Classifier</a>
+        </div>
+        <div class="navbar-right">
+            <span style="margin-right: 15px;">Welcome, {{ username }}</span>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h1>Bird vs Drone Classifier</h1>
+        
+        <div id="error-container" class="error" style="display: none;"></div>
+        
+        <form id="upload-form" enctype="multipart/form-data">
+            <label for="file-upload" class="file-label">Choose an Image</label>
+            <input type="file" name="file" id="file-upload" class="file-input" required 
+                   accept="image/jpeg,image/png,image/jpg">
+            <p id="filename"></p>
+            <button type="submit" id="analyze-btn">Upload & Analyze</button>
+        </form>
+        
+        <div id="results-container" style="display: none; margin-top: 20px;">
+            <h2>Analysis Results:</h2>
+            <p id="prediction-result" class="prediction"></p>
+        </div>
+    </div>
+    
+    <script>
+        // Display selected filename
+        document.getElementById('file-upload').addEventListener('change', function() {
+            var filename = this.value.split('\\').pop();
+            if(filename) {
+                document.getElementById('filename').textContent = 'Selected file: ' + filename;
+            }
+        });
+
+        // Form submission
+        document.getElementById('upload-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('file-upload');
+            if (!fileInput.files[0]) {
+                showError('Please select an image file');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            // Show loading state
+            document.getElementById('analyze-btn').textContent = 'Analyzing...';
+            document.getElementById('analyze-btn').disabled = true;
+            
+            // Use the CSRF-protected fetch method
+            fetch('/api/predict', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Reset button
+                document.getElementById('analyze-btn').textContent = 'Upload & Analyze';
+                document.getElementById('analyze-btn').disabled = false;
+                
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    // Show results
+                    document.getElementById('results-container').style.display = 'block';
+                    
+                    // Format the prediction result
+                    const result = data.prediction;
+                    const className = result.class || 'Unknown';
+                    const confidence = result.confidence ? `(${(result.confidence * 100).toFixed(2)}%)` : '';
+                    
+                    document.getElementById('prediction-result').textContent = `${className} ${confidence}`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('analyze-btn').textContent = 'Upload & Analyze';
+                document.getElementById('analyze-btn').disabled = false;
+                showError('Error connecting to server: ' + error.message);
+            });
+        });
+        
+        function showError(message) {
+            const errorContainer = document.getElementById('error-container');
+            errorContainer.textContent = message;
+            errorContainer.style.display = 'block';
+            document.getElementById('results-container').style.display = 'none';
+            
+            // Hide error after 5 seconds
+            setTimeout(() => {
+                errorContainer.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
